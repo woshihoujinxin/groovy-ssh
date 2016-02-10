@@ -1,21 +1,20 @@
 package org.hidetake.groovy.ssh.extension
 
-import com.jcraft.jsch.ChannelSftp.LsEntry
 import groovy.transform.ToString
+import groovy.util.logging.Slf4j
+import org.hidetake.groovy.ssh.core.settings.FileTransferMethod
 import org.hidetake.groovy.ssh.operation.SftpException
 import org.hidetake.groovy.ssh.session.SessionExtension
-import org.hidetake.groovy.ssh.util.Utility
-import org.slf4j.LoggerFactory
 
 import static org.hidetake.groovy.ssh.util.Utility.currySelf
 
 /**
- * An extension class to get a file or directory via SFTP.
+ * An extension class to get a file or directory.
  *
  * @author Hidetake Iwata
  */
-trait SftpGet implements SessionExtension {
-    private static final log = LoggerFactory.getLogger(SftpGet)
+@Slf4j
+trait FileGet implements SessionExtension {
 
     @ToString
     private static class GetOptions {
@@ -57,20 +56,6 @@ get(from: String)                       // get a file and return the content'''
     }
 
     /**
-     * Get a file from the remote host.
-     *
-     * @param remote
-     * @param stream
-     */
-    void get(String remote, OutputStream stream) {
-        assert remote, 'remote path must be given'
-        assert stream,  'output stream must be given'
-        sftp {
-            getContent(remote, stream)
-        }
-    }
-
-    /**
      * Get a file or directory from the remote host.
      *
      * @param remote
@@ -91,6 +76,39 @@ get(from: String)                       // get a file and return the content'''
     void get(String remote, File local) {
         assert remote, 'remote path must be given'
         assert local,  'local file must be given'
+        if (operationSettings.fileTransfer == FileTransferMethod.sftp) {
+            sftpGet(remote, local)
+        } else if (operationSettings.fileTransfer == FileTransferMethod.scp) {
+            scpGet(remote, local)
+        } else {
+            throw new IllegalStateException("Unknown file transfer method: ${operationSettings.fileTransfer}")
+        }
+    }
+
+    /**
+     * Get a file from the remote host.
+     *
+     * @param remote
+     * @param stream
+     */
+    void get(String remote, OutputStream stream) {
+        assert remote, 'remote path must be given'
+        assert stream,  'output stream must be given'
+        if (operationSettings.fileTransfer == FileTransferMethod.sftp) {
+            sftp {
+                getContent(remote, stream)
+            }
+        } else if (operationSettings.fileTransfer == FileTransferMethod.scp) {
+            new ScpHelper(operations).fetchFile(remote, stream)
+        } else {
+            throw new IllegalStateException("Unknown file transfer method: ${operationSettings.fileTransfer}")
+        }
+    }
+
+
+    private void sftpGet(String remote, File local) {
+        assert remote, 'remote path must be given'
+        assert local,  'local file must be given'
         try {
             sftp {
                 getFile(remote, local.path)
@@ -98,14 +116,14 @@ get(from: String)                       // get a file and return the content'''
         } catch (SftpException e) {
             if (e.cause.message.startsWith('not supported to get directory')) {
                 log.debug(e.localizedMessage)
-                getRecursive(remote, local)
+                sftpGetRecursive(remote, local)
             } else {
                 throw new RuntimeException(e)
             }
         }
     }
 
-    private void getRecursive(String baseRemoteDir, File baseLocalDir) {
+    private void sftpGetRecursive(String baseRemoteDir, File baseLocalDir) {
         sftp {
             currySelf { Closure self, String remoteDir, File localDir ->
                 def remoteDirName = remoteDir.find(~'[^/]+/?$')
@@ -130,4 +148,10 @@ get(from: String)                       // get a file and return the content'''
             }.call(baseRemoteDir, baseLocalDir)
         }
     }
+
+    private void scpGet(String remote, File local) {
+        // FIXME
+        new ScpHelper(operations).fetchFile(remote, null)
+    }
+
 }

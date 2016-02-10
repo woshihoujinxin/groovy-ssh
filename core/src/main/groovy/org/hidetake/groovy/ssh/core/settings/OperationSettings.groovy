@@ -57,6 +57,11 @@ class OperationSettings implements Settings<OperationSettings> {
     Closure interaction
 
     /**
+     * File transfer method such as SFTP or SCP.
+     */
+    FileTransferMethod fileTransfer
+
+    /**
      * Extensions for {@link org.hidetake.groovy.ssh.session.SessionHandler}.
      */
     List extensions = []
@@ -67,6 +72,7 @@ class OperationSettings implements Settings<OperationSettings> {
             pty: false,
             logging: LoggingMethod.slf4j,
             encoding: 'UTF-8',
+            fileTransfer: FileTransferMethod.sftp,
             extensions: []
     )
 
@@ -80,6 +86,7 @@ class OperationSettings implements Settings<OperationSettings> {
                 interaction:    findNotNull(right.interaction, interaction),
                 outputStream:   findNotNull(right.outputStream, outputStream),
                 errorStream:    findNotNull(right.errorStream, errorStream),
+                fileTransfer:   findNotNull(right.fileTransfer, fileTransfer),
                 extensions:     extensions + right.extensions
         )
     }

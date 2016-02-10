@@ -1,12 +1,9 @@
 package org.hidetake.groovy.ssh.test.server
 
-import com.jcraft.jsch.JSchException
 import org.apache.sshd.SshServer
 import org.apache.sshd.server.PasswordAuthenticator
-import org.apache.sshd.server.sftp.SftpSubsystem
 import org.hidetake.groovy.ssh.Ssh
 import org.hidetake.groovy.ssh.core.Service
-import org.hidetake.groovy.ssh.operation.SftpException
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import spock.lang.Shared
@@ -14,10 +11,10 @@ import spock.lang.Specification
 import spock.lang.Unroll
 import spock.util.mop.Use
 
-import static FilenameUtils.toUnixSeparator
+import static org.hidetake.groovy.ssh.test.server.FilenameUtils.toUnixSeparator
 
 @Use(FileDivCategory)
-class FileTransferSpec extends Specification {
+abstract class AbstractFileTransferSpecification extends Specification {
 
     @Shared
     SshServer server
@@ -32,8 +29,6 @@ class FileTransferSpec extends Specification {
         server.passwordAuthenticator = Mock(PasswordAuthenticator) {
             (1.._) * authenticate('someuser', 'somepassword', _) >> true
         }
-        server.subsystemFactories = [new SftpSubsystem.Factory()]
-        server.start()
     }
 
     def cleanupSpec() {
@@ -733,45 +728,6 @@ class FileTransferSpec extends Specification {
 
         then:
         thrown(IllegalArgumentException)
-    }
-
-
-    def "sftp.mkdir() should fail if directory already exists"() {
-        given:
-        def folder = temporaryFolder.newFolder()
-
-        when:
-        ssh.run {
-            session(ssh.remotes.testServer) {
-                sftp {
-                    mkdir folder.path
-                }
-            }
-        }
-
-        then:
-        SftpException e = thrown()
-        e.message.contains('create a directory')
-    }
-
-    def "sftp should fail if sftp subsystem is disabled"() {
-        given:
-        server.stop(true)
-        server.subsystemFactories.clear()
-        server.start()
-
-        when:
-        ssh.run {
-            session(ssh.remotes.testServer) {
-                sftp {
-                    ls('.')
-                }
-            }
-        }
-
-        then:
-        JSchException e = thrown()
-        e.message == 'failed to send channel request'
     }
 
 
