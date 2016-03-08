@@ -1,34 +1,60 @@
 package org.hidetake.groovy.ssh.interaction
 
-import org.hidetake.groovy.ssh.operation.LineOutputStream
+import groovy.util.logging.Slf4j
 
-/**
- * An entry point of interaction support classes.
- *
- * @author Hidetake Iwata
- */
+import static org.hidetake.groovy.ssh.util.Utility.callWithDelegate
+
+@Slf4j
 class Interaction {
+    private final OutputStream standardInput
 
-    /**
-     * Enable interaction support.
-     *
-     * @param interaction interaction DSL closure
-     * @param standardInput standard input stream
-     * @param standardOutput standard output stream
-     * @param standardError standard error stream (optional)
-     */
-    static void enable(Closure interaction,
-                       OutputStream standardInput,
-                       LineOutputStream standardOutput,
-                       LineOutputStream standardError = null) {
-        def evaluator = new Evaluator(standardInput)
-        def engine = new Engine(evaluator, interaction)
+    private final Deque<Context> contextStack = new ArrayDeque<>()
 
-        standardOutput.listenLine { String line -> engine.processLine(Stream.StandardOutput, line) }
-        standardError?.listenLine { String line -> engine.processLine(Stream.StandardError, line) }
+    def Interaction(Closure interactionClosure, OutputStream standardInput1) {
+        standardInput = standardInput1
+        assert standardInput
 
-        standardOutput.listenPartial { String block -> engine.processPartial(Stream.StandardOutput, block) }
-        standardError?.listenPartial { String block -> engine.processPartial(Stream.StandardError, block) }
+        assert interactionClosure
+        contextStack.push(new Context(evaluateInteractionClosure(interactionClosure)))
     }
 
+    void processLine(Stream stream, String line) {
+        def context = contextStack.first
+        def rule = context.matchLine(stream, line)
+        if (rule) {
+            log.debug("Rule matched from $stream line: $line -> $rule")
+            def evaluatedRules = evaluateInteractionClosure(rule.action.curry(line))
+            if (!evaluatedRules.empty) {
+                def innerContext = new Context(evaluatedRules)
+                contextStack.push(innerContext)
+                log.debug("Entering context ${contextStack.size()}: $innerContext")
+            }
+        } else {
+            log.debug("No rule matched from $stream line: $line")
+        }
+    }
+
+    boolean processBlock(Stream stream, String block) {
+        def context = contextStack.first
+        def rule = context.matchBlock(stream, block)
+        if (rule) {
+            log.debug("Rule matched from $stream block: $block -> $rule")
+            def evaluatedRules = evaluateInteractionClosure(rule.action.curry(block))
+            if (!evaluatedRules.empty) {
+                def innerContext = new Context(evaluatedRules)
+                contextStack.push(innerContext)
+                log.debug("Entering context ${contextStack.size()}: $innerContext")
+            }
+            true
+        } else {
+            log.debug("No rule matched from $stream block: $block")
+            false
+        }
+    }
+
+    private evaluateInteractionClosure(Closure interactionClosure) {
+        def handler = new InteractionHandler(standardInput)
+        callWithDelegate(interactionClosure, handler)
+        handler.rules
+    }
 }

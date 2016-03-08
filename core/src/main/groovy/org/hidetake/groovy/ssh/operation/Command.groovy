@@ -4,7 +4,7 @@ import com.jcraft.jsch.ChannelExec
 import groovy.util.logging.Slf4j
 import org.hidetake.groovy.ssh.connection.Connection
 import org.hidetake.groovy.ssh.core.settings.LoggingMethod
-import org.hidetake.groovy.ssh.interaction.Interaction
+import org.hidetake.groovy.ssh.interaction.InteractionManager
 
 /**
  * A command operation.
@@ -19,6 +19,7 @@ class Command implements Operation {
     private final OutputStream standardInput
     private final LineOutputStream standardOutput
     private final LineOutputStream standardError
+    private final InteractionManager interactionManager
 
     def Command(Connection connection1, CommandSettings settings, String commandLine1) {
         connection = connection1
@@ -52,8 +53,10 @@ class Command implements Operation {
         if (settings.errorStream) {
             standardError.pipe(settings.errorStream)
         }
+
+        interactionManager = new InteractionManager(standardInput, standardOutput, standardError)
         if (settings.interaction) {
-            Interaction.enable(settings.interaction, standardInput, standardOutput, standardError)
+            interactionManager.add(settings.interaction)
         }
     }
 
