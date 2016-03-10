@@ -108,6 +108,7 @@ trait Sudo implements SessionExtension {
                 when(partial: prompt, from: standardOutput) {
                     log.info("Providing password for sudo prompt on $operations.remote.name")
                     standardInput << sudoSettings.sudoPassword << '\n'
+                    standardInput.flush()
 
                     when(nextLine: _, from: standardOutput) {
                         when(nextLine: 'Sorry, try again.') {

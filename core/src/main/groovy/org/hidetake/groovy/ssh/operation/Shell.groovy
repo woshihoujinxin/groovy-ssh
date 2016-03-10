@@ -4,7 +4,8 @@ import com.jcraft.jsch.ChannelShell
 import groovy.util.logging.Slf4j
 import org.hidetake.groovy.ssh.connection.Connection
 import org.hidetake.groovy.ssh.core.settings.LoggingMethod
-import org.hidetake.groovy.ssh.interaction.InteractionManager
+import org.hidetake.groovy.ssh.interaction.Stream
+import org.hidetake.groovy.ssh.interaction.Streams
 
 /**
  * A shell operation.
@@ -15,35 +16,38 @@ import org.hidetake.groovy.ssh.interaction.InteractionManager
 class Shell implements Operation {
     private final Connection connection
     private final ChannelShell channel
-    private final OutputStream standardInput
-    private final LineOutputStream standardOutput
-    private final InteractionManager interactionManager
+    private final Streams streams
 
     def Shell(Connection connection1, ShellSettings settings) {
         connection = connection1
         channel = connection.createShellChannel()
         channel.agentForwarding = settings.agentForwarding
 
-        standardInput = channel.outputStream
-        standardOutput = new LineOutputStream(settings.encoding)
-        channel.outputStream = standardOutput
-
-        switch (settings.logging) {
-            case LoggingMethod.slf4j:
-                standardOutput.listenLogging { String m -> log.info("$connection.remote.name#$channel.id|$m") }
-                break
-            case LoggingMethod.stdout:
-                standardOutput.listenLogging { String m -> System.out.println("$connection.remote.name#$channel.id|$m") }
-                break
-        }
-
+        streams = new Streams(channel.outputStream, channel.inputStream, settings.encoding)
         if (settings.outputStream) {
-            standardOutput.pipe(settings.outputStream)
+            streams.pipe(Stream.StandardOutput, settings.outputStream)
         }
-
-        interactionManager = new InteractionManager(standardInput, standardOutput)
+        if (settings.logging == LoggingMethod.slf4j) {
+            streams.addInteraction {
+                when(line: _, from: standardOutput) {
+                    log.info("$connection.remote.name#$channel.id|$it")
+                }
+                when(line: _, from: standardError) {
+                    log.error("$connection.remote.name#$channel.id|$it")
+                }
+            }
+        } else if (settings.logging == LoggingMethod.stdout) {
+            streams.addInteraction {
+                when(line: _, from: standardOutput) {
+                    System.out.println("$connection.remote.name#$channel.id|$it")
+                }
+                when(line: _, from: standardError) {
+                    System.err.println("$connection.remote.name#$channel.id|$it")
+                }
+            }
+        }
         if (settings.interaction) {
-            interactionManager.add(settings.interaction)
+            streams.addInteraction(settings.interaction)
         }
     }
 
@@ -52,6 +56,8 @@ class Shell implements Operation {
         channel.connect()
         try {
             log.info("Started shell $connection.remote.name#$channel.id")
+            streams.start()
+            streams.waitForEndOfStream()
             while (!channel.closed) {
                 sleep(100)
             }
@@ -70,6 +76,7 @@ class Shell implements Operation {
     @Override
     void startAsync(Closure closure) {
         connection.whenClosed(channel) {
+            streams.waitForEndOfStream()
             int exitStatus = channel.exitStatus
             if (exitStatus == 0) {
                 log.info("Success shell $connection.remote.name#$channel.id")
@@ -79,11 +86,17 @@ class Shell implements Operation {
             closure.call(exitStatus)
         }
         channel.connect()
+        streams.start()
         log.info("Started shell $connection.remote.name#$channel.id")
     }
 
     @Override
     void onEachLineOfStandardOutput(Closure closure) {
-        standardOutput.listenLine(closure)
+        // TODO: make it better
+        streams.addInteraction {
+            when(line: _, from: Stream.StandardOutput) {
+                closure(it)
+            }
+        }
     }
 }

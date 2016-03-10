@@ -15,40 +15,40 @@ class Interaction {
         assert standardInput
 
         assert interactionClosure
-        contextStack.push(new Context(evaluateInteractionClosure(interactionClosure)))
+        def innerContext = new Context(evaluateInteractionClosure(interactionClosure))
+        contextStack.push(innerContext)
+        log.debug("Entering context ${contextStack.size()}: $innerContext")
     }
 
     void processLine(Stream stream, String line) {
         def context = contextStack.first
         def rule = context.matchLine(stream, line)
         if (rule) {
-            log.debug("Rule matched from $stream line: $line -> $rule")
+            log.debug("Rule matched: from: $stream, line: $line -> $rule")
             def evaluatedRules = evaluateInteractionClosure(rule.action.curry(line))
             if (!evaluatedRules.empty) {
                 def innerContext = new Context(evaluatedRules)
                 contextStack.push(innerContext)
-                log.debug("Entering context ${contextStack.size()}: $innerContext")
+                log.debug("Entering context#${contextStack.size()}: $innerContext")
             }
         } else {
-            log.debug("No rule matched from $stream line: $line")
+            log.debug("No rule matched: from: $stream, line: $line")
         }
     }
 
-    boolean processBlock(Stream stream, String block) {
+    void processPartial(Stream stream, String partial) {
         def context = contextStack.first
-        def rule = context.matchBlock(stream, block)
+        def rule = context.matchPartial(stream, partial)
         if (rule) {
-            log.debug("Rule matched from $stream block: $block -> $rule")
-            def evaluatedRules = evaluateInteractionClosure(rule.action.curry(block))
+            log.debug("Rule matched: from: $stream, partial: $partial -> $rule")
+            def evaluatedRules = evaluateInteractionClosure(rule.action.curry(partial))
             if (!evaluatedRules.empty) {
                 def innerContext = new Context(evaluatedRules)
                 contextStack.push(innerContext)
-                log.debug("Entering context ${contextStack.size()}: $innerContext")
+                log.debug("Entering context#${contextStack.size()}: $innerContext")
             }
-            true
         } else {
-            log.debug("No rule matched from $stream block: $block")
-            false
+            log.debug("No rule matched: from: $stream, partial: $partial")
         }
     }
 

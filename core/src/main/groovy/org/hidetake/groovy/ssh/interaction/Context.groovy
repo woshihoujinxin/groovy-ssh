@@ -1,8 +1,5 @@
 package org.hidetake.groovy.ssh.interaction
 
-import groovy.transform.ToString
-
-@ToString
 class Context {
     final List<Rule> rules
 
@@ -10,7 +7,6 @@ class Context {
 
     def Context(List<Rule> rules1) {
         rules = rules1
-        assert rules
     }
 
     Rule matchLine(Stream stream, String line) {
@@ -18,7 +14,12 @@ class Context {
         rules.find { it.matcher(stream, Event.Line, lineNumber, line) }
     }
 
-    Rule matchBlock(Stream stream, String block) {
+    Rule matchPartial(Stream stream, String block) {
         rules.find { it.matcher(stream, Event.Partial, lineNumber, block) }
+    }
+
+    @Override
+    String toString() {
+        "${Context.simpleName}$rules"
     }
 }

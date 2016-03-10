@@ -4,7 +4,8 @@ import com.jcraft.jsch.ChannelExec
 import groovy.util.logging.Slf4j
 import org.hidetake.groovy.ssh.connection.Connection
 import org.hidetake.groovy.ssh.core.settings.LoggingMethod
-import org.hidetake.groovy.ssh.interaction.InteractionManager
+import org.hidetake.groovy.ssh.interaction.Stream
+import org.hidetake.groovy.ssh.interaction.Streams
 
 /**
  * A command operation.
@@ -16,10 +17,7 @@ class Command implements Operation {
     private final Connection connection
     private final ChannelExec channel
     private final String commandLine
-    private final OutputStream standardInput
-    private final LineOutputStream standardOutput
-    private final LineOutputStream standardError
-    private final InteractionManager interactionManager
+    private final Streams streams
 
     def Command(Connection connection1, CommandSettings settings, String commandLine1) {
         connection = connection1
@@ -30,33 +28,34 @@ class Command implements Operation {
         channel.pty = settings.pty
         channel.agentForwarding = settings.agentForwarding
 
-        standardInput = channel.outputStream
-        standardOutput = new LineOutputStream(settings.encoding)
-        standardError = new LineOutputStream(settings.encoding)
-        channel.outputStream = standardOutput
-        channel.errStream = standardError
-
-        switch (settings.logging) {
-            case LoggingMethod.slf4j:
-                standardOutput.listenLogging { String m -> log.info("$connection.remote.name#$channel.id|$m") }
-                standardError.listenLogging { String m -> log.error("$connection.remote.name#$channel.id|$m") }
-                break
-            case LoggingMethod.stdout:
-                standardOutput.listenLogging { String m -> System.out.println("$connection.remote.name#$channel.id|$m") }
-                standardError.listenLogging { String m -> System.err.println("$connection.remote.name#$channel.id|$m") }
-                break
-        }
-
+        streams = new Streams(channel.outputStream, channel.inputStream, channel.errStream, settings.encoding)
         if (settings.outputStream) {
-            standardOutput.pipe(settings.outputStream)
+            streams.pipe(Stream.StandardOutput, settings.outputStream)
         }
         if (settings.errorStream) {
-            standardError.pipe(settings.errorStream)
+            streams.pipe(Stream.StandardError, settings.errorStream)
         }
-
-        interactionManager = new InteractionManager(standardInput, standardOutput, standardError)
+        if (settings.logging == LoggingMethod.slf4j) {
+            streams.addInteraction {
+                when(line: _, from: standardOutput) {
+                    log.info("$connection.remote.name#$channel.id|$it")
+                }
+                when(line: _, from: standardError) {
+                    log.error("$connection.remote.name#$channel.id|$it")
+                }
+            }
+        } else if (settings.logging == LoggingMethod.stdout) {
+            streams.addInteraction {
+                when(line: _, from: standardOutput) {
+                    System.out.println("$connection.remote.name#$channel.id|$it")
+                }
+                when(line: _, from: standardError) {
+                    System.err.println("$connection.remote.name#$channel.id|$it")
+                }
+            }
+        }
         if (settings.interaction) {
-            interactionManager.add(settings.interaction)
+            streams.addInteraction(settings.interaction)
         }
     }
 
@@ -65,6 +64,8 @@ class Command implements Operation {
         channel.connect()
         log.info("Started command $connection.remote.name#$channel.id: $commandLine")
         try {
+            streams.start()
+            streams.waitForEndOfStream()
             while (!channel.closed) {
                 sleep(100)
             }
@@ -83,6 +84,7 @@ class Command implements Operation {
     @Override
     void startAsync(Closure closure) {
         connection.whenClosed(channel) {
+            streams.waitForEndOfStream()
             int exitStatus = channel.exitStatus
             if (exitStatus == 0) {
                 log.info("Success command $connection.remote.name#$channel.id: $commandLine")
@@ -92,11 +94,17 @@ class Command implements Operation {
             closure.call(exitStatus)
         }
         channel.connect()
+        streams.start()
         log.info("Started command $connection.remote.name#$channel.id: $commandLine")
     }
 
     @Override
     void onEachLineOfStandardOutput(Closure closure) {
-        standardOutput.listenLine(closure)
+        // TODO: make it better
+        streams.addInteraction {
+            when(line: _, from: Stream.StandardOutput) {
+                closure(it)
+            }
+        }
     }
 }
