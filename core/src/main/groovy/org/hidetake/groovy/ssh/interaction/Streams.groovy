@@ -6,6 +6,7 @@ class Streams {
     private final Listener listener
     private final List<Receiver> receivers = []
     private final List<Thread> threads = []
+    private final List<Throwable> exceptions = [].asSynchronized()
 
     def Streams(OutputStream standardInput1, InputStream standardOutput, InputStream standardError, String encoding) {
         standardInput = standardInput1
@@ -30,10 +31,15 @@ class Streams {
 
     void start() {
         threads.addAll(receivers.collect { new Thread(it) })
+        exceptions.clear()
+        threads*.uncaughtExceptionHandler = { Thread thread, Throwable e -> exceptions.add(e) }
         threads*.start()
     }
 
     void waitForEndOfStream() {
         threads*.join()
+        if (!exceptions.empty) {
+            throw new InteractionException(*exceptions)
+        }
     }
 }
