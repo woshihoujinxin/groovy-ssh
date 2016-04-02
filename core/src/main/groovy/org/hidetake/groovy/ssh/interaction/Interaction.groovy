@@ -17,22 +17,22 @@ class Interaction {
         assert interactionClosure
         def innerContext = new Context(evaluateInteractionClosure(interactionClosure))
         contextStack.push(innerContext)
-        log.debug("Entering context ${contextStack.size()}: $innerContext")
+        log.trace("Entering context ${contextStack.size()}: $innerContext")
     }
 
     void processLine(Stream stream, String line) {
         def context = contextStack.first
         def rule = context.matchLine(stream, line)
         if (rule) {
-            log.debug("Rule matched: from: $stream, line: $line -> $rule")
+            log.trace("Rule matched: from: $stream, line: $line -> $rule")
             def evaluatedRules = evaluateInteractionClosure(rule.action.curry(line))
             if (!evaluatedRules.empty) {
                 def innerContext = new Context(evaluatedRules)
                 contextStack.push(innerContext)
-                log.debug("Entering context#${contextStack.size()}: $innerContext")
+                log.trace("Entering context#${contextStack.size()}: $innerContext")
             }
         } else {
-            log.debug("No rule matched: from: $stream, line: $line")
+            log.trace("No rule matched: from: $stream, line: $line")
         }
     }
 
@@ -40,15 +40,15 @@ class Interaction {
         def context = contextStack.first
         def rule = context.matchPartial(stream, partial)
         if (rule) {
-            log.debug("Rule matched: from: $stream, partial: $partial -> $rule")
+            log.trace("Rule matched: from: $stream, partial: $partial -> $rule")
             def evaluatedRules = evaluateInteractionClosure(rule.action.curry(partial))
             if (!evaluatedRules.empty) {
                 def innerContext = new Context(evaluatedRules)
                 contextStack.push(innerContext)
-                log.debug("Entering context#${contextStack.size()}: $innerContext")
+                log.trace("Entering context#${contextStack.size()}: $innerContext")
             }
         } else {
-            log.debug("No rule matched: from: $stream, partial: $partial")
+            log.trace("No rule matched: from: $stream, partial: $partial")
         }
     }
 

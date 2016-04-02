@@ -38,7 +38,7 @@ class Receiver implements Runnable {
                     break
                 }
 
-                log.debug("Received $readLength bytes from $stream")
+                log.trace("Received $readLength bytes from $stream")
                 pipes*.write(readBuffer, 0, readLength)
                 byteBuffer.write(readBuffer, 0, readLength)
                 def block = new String(byteBuffer.toByteArray(), encoding)
@@ -46,7 +46,7 @@ class Receiver implements Runnable {
                 onReceivedBlock(block)
             }
 
-            log.debug("Reached end of stream on $stream")
+            log.trace("Reached end of stream on $stream")
             onEndOfStream()
         } finally {
             inputStream.close()
@@ -58,7 +58,7 @@ class Receiver implements Runnable {
         def cumulativeBlock = lineBuffer + block
         def lines = LINE_SEPARATOR.split(cumulativeBlock, Integer.MIN_VALUE)
         if (lines.length > 0) {
-            log.debug("Received $lines.length lines from $stream")
+            log.trace("Received $lines.length lines from $stream")
             lines.take(lines.length - 1).each { line ->
                 listener.matchLine(stream, line)
             }
@@ -74,7 +74,7 @@ class Receiver implements Runnable {
         def cumulativeBlock = lineBuffer
         def lines = LINE_SEPARATOR.split(cumulativeBlock, Integer.MIN_VALUE)
         if (lines.length > 0) {
-            log.debug("Received $lines.length lines from $stream")
+            log.trace("Received $lines.length lines from $stream")
             lines.take(lines.length - 1).each { line ->
                 listener.matchLine(stream, line)
             }
